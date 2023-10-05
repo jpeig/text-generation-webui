@@ -1,0 +1,23 @@
+root ::= person_object
+
+person_object :=
+  "{" ws
+    "\"name\"" ":" ws string ","
+    ws "\"age\"" ":" ws integer ","
+    ws "\"isStudent\"" ":" ws boolean
+  ws "}"
+
+string :=
+  "\"" (
+    [^"\\] |
+    "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+  )* "\"" ws
+
+integer :=
+  "-"? ([0-9] | [1-9] [0-9]*) ws
+
+boolean ::= 
+  ("true" | "false") ws
+
+# Optional space: by convention, applied in this grammar after literal chars when allowed
+ws ::= ([ \t\n] ws)?

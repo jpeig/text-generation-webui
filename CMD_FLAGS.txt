@@ -1,3 +1,4 @@
 # Only used by the one-click installer.
 # Example:
 # --listen --api
+--model TheBloke_Mistral-7B-OpenOrca-GPTQ --xformers

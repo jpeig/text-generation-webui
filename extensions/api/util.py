@@ -20,6 +20,7 @@ api_tls = threading.local()
 def build_parameters(body, chat=False):
 
     generate_params = {
+        'json_schema': str(body.get('json_schema', 'text')),
         'max_new_tokens': int(body.get('max_new_tokens', body.get('max_length', 200))),
         'auto_max_new_tokens': bool(body.get('auto_max_new_tokens', False)),
         'max_tokens_second': int(body.get('max_tokens_second', 0)),
