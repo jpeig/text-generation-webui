@@ -1,4 +1,4 @@
 # Only used by the one-click installer.
 # Example:
 # --listen --api
---model TheBloke_Mistral-7B-OpenOrca-GPTQ --xformers
+--model TheBloke_Mistral-11B-OmniMix-GPTQ_gptq-4bit-32g-actorder_True --xformers
