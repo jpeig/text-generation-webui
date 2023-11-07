@@ -1,9 +1,15 @@
 import os
+import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import torch
-from exllamav2 import ExLlamaV2, ExLlamaV2Cache, ExLlamaV2Config
+from exllamav2 import (
+    ExLlamaV2,
+    ExLlamaV2Cache,
+    ExLlamaV2Cache_8bit,
+    ExLlamaV2Config
+)
 from torch.nn import CrossEntropyLoss
 from transformers import GenerationConfig, PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
@@ -21,6 +27,9 @@ except ModuleNotFoundError:
         'https://github.com/Dao-AILab/flash-attention#installation-and-features'
     )
     pass
+except Exception:
+    logger.warning('Failed to load flash-attention due to the following error:\n')
+    traceback.print_exc()
 
 
 class Exllamav2HF(PreTrainedModel):
@@ -36,11 +45,18 @@ class Exllamav2HF(PreTrainedModel):
         self.generation_config = GenerationConfig()
         self.loras = None
 
-        self.ex_cache = ExLlamaV2Cache(self.ex_model)
-        self.past_seq = None
+        if shared.args.cache_8bit:
+            self.ex_cache = ExLlamaV2Cache_8bit(self.ex_model)
+        else:
+            self.ex_cache = ExLlamaV2Cache(self.ex_model)
 
+        self.past_seq = None
         if shared.args.cfg_cache:
-            self.ex_cache_negative = ExLlamaV2Cache(self.ex_model)
+            if shared.args.cache_8bit:
+                self.ex_cache_negative = ExLlamaV2Cache_8bit(self.ex_model)
+            else:
+                self.ex_cache_negative = ExLlamaV2Cache(self.ex_model)
+
             self.past_seq_negative = None
 
     def _validate_model_class(self):
@@ -148,5 +164,6 @@ class Exllamav2HF(PreTrainedModel):
         config.max_seq_len = shared.args.max_seq_len
         config.scale_pos_emb = shared.args.compress_pos_emb
         config.scale_alpha_value = shared.args.alpha_value
+        config.no_flash_attn = shared.args.no_flash_attn
 
         return Exllamav2HF(config)

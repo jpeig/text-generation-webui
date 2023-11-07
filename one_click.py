@@ -56,6 +56,19 @@ def cpu_has_avx2():
         return True
 
 
+def cpu_has_amx():
+    try:
+        import cpuinfo
+
+        info = cpuinfo.get_cpu_info()
+        if 'amx' in info['flags']:
+            return True
+        else:
+            return False
+    except:
+        return True
+
+
 def torch_version():
     site_packages_path = None
     for sitedir in site.getsitepackages():
@@ -171,8 +184,23 @@ def install_webui():
     install_git = "conda install -y -k ninja git"
     install_pytorch = "python -m pip install torch torchvision torchaudio"
 
+    use_cuda118 = "N"
     if any((is_windows(), is_linux())) and choice == "A":
-        install_pytorch = "python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
+        if "USE_CUDA118" in os.environ:
+            use_cuda118 = "Y" if os.environ.get("USE_CUDA118", "").lower() in ("yes", "y", "true", "1", "t", "on") else "N"
+        else:
+            # Ask for CUDA version if using NVIDIA
+            print("\nWould you like to use CUDA 11.8 instead of 12.1? This is only necessary for older GPUs like Kepler.\nIf unsure, say \"N\".\n")
+            use_cuda118 = input("Input (Y/N)> ").upper().strip('"\'').strip()
+            while use_cuda118 not in 'YN':
+                print("Invalid choice. Please try again.")
+                use_cuda118 = input("Input> ").upper().strip('"\'').strip()
+        if use_cuda118 == 'Y':
+            print("CUDA: 11.8")
+        else:
+            print("CUDA: 12.1")
+
+        install_pytorch = f"python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/{'cu121' if use_cuda118 == 'N' else 'cu118'}"
     elif not is_macos() and choice == "B":
         if is_linux():
             install_pytorch = "python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6"
@@ -189,7 +217,7 @@ def install_webui():
 
     # Install CUDA libraries (this wasn't necessary for Pytorch before...)
     if choice == "A":
-        run_cmd("conda install -y -c \"nvidia/label/cuda-11.8.0\" cuda-runtime", assert_success=True, environment=True)
+        run_cmd(f"conda install -y -c \"nvidia/label/{'cuda-12.1.1' if use_cuda118 == 'N' else 'cuda-11.8.0'}\" cuda-runtime", assert_success=True, environment=True)
 
     # Install the webui requirements
     update_requirements(initial_installation=True)
@@ -198,7 +226,7 @@ def install_webui():
 def update_requirements(initial_installation=False):
     # Create .git directory if missing
     if not os.path.isdir(os.path.join(script_dir, ".git")):
-        git_creation_cmd = 'git init -b main && git remote add origin https://github.com/oobabooga/text-generation-webui && git fetch && git remote set-head origin -a && git reset origin/HEAD && git branch --set-upstream-to=origin/HEAD'
+        git_creation_cmd = 'git init -b main && git remote add origin https://github.com/oobabooga/text-generation-webui && git fetch && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main && git reset --hard origin/main && git branch --set-upstream-to=origin/main'
         run_cmd(git_creation_cmd, environment=True, assert_success=True)
 
     files_to_check = [
@@ -236,9 +264,11 @@ def update_requirements(initial_installation=False):
     elif initial_installation:
         print_big_message("Will not install extensions due to INSTALL_EXTENSIONS environment variable.")
 
-    # Detect the PyTorch version
+    # Detect the Python and PyTorch versions
     torver = torch_version()
-    is_cuda = '+cu' in torver  # 2.0.1+cu118
+    print(f"TORCH: {torver}")
+    is_cuda = '+cu' in torver
+    is_cuda118 = '+cu118' in torver  # 2.1.0+cu118
     is_cuda117 = '+cu117' in torver  # 2.0.1+cu117
     is_rocm = '+rocm' in torver  # 2.0.1+rocm5.4.2
     is_intel = '+cxx11' in torver  # 2.0.1a0+cxx11.abi
@@ -269,7 +299,12 @@ def update_requirements(initial_installation=False):
     print_big_message(f"Installing webui requirements from file: {requirements_file}")
     textgen_requirements = open(requirements_file).read().splitlines()
     if is_cuda117:
-        textgen_requirements = [req.replace('+cu118', '+cu117').replace('torch2.1', 'torch2.0') for req in textgen_requirements]
+        textgen_requirements = [req.replace('+cu121', '+cu117').replace('+cu122', '+cu117').replace('torch2.1', 'torch2.0') for req in textgen_requirements]
+    elif is_cuda118:
+        textgen_requirements = [req.replace('+cu121', '+cu118').replace('+cu122', '+cu118') for req in textgen_requirements]
+    if is_windows() and (is_cuda117 or is_cuda118):  # No flash-attention on Windows for CUDA 11
+        textgen_requirements = [req for req in textgen_requirements if 'bdashore3/flash-attention' not in req]
+
     with open('temp_requirements.txt', 'w') as file:
         file.write('\n'.join(textgen_requirements))
 
