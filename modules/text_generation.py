@@ -9,7 +9,7 @@ import traceback
 import numpy as np
 import torch
 import transformers
-from transformers import LogitsProcessorList
+from transformers import LogitsProcessorList, is_torch_xpu_available
 
 import modules.shared as shared
 from modules.callbacks import (
@@ -56,7 +56,10 @@ def _generate_reply(question, state, stopping_strings=None, is_chat=False, escap
 
     # Find the stopping strings
     all_stop_strings = []
-    for st in (stopping_strings, ast.literal_eval(f"[{state['custom_stopping_strings']}]")):
+    for st in (stopping_strings, state['custom_stopping_strings']):
+        if type(st) is str:
+            st = ast.literal_eval(f"[{st}]")
+
         if type(st) is list and len(st) > 0:
             all_stop_strings += st
 
@@ -132,8 +135,8 @@ def encode(prompt, add_special_tokens=True, add_bos_token=True, truncation_lengt
     elif torch.backends.mps.is_available():
         device = torch.device('mps')
         return input_ids.to(device)
-    elif hasattr(torch, 'xpu') and torch.xpu.is_available():
-        return input_ids.to('xpu')
+    elif is_torch_xpu_available():
+        return input_ids.to("xpu:0")
     else:
         return input_ids.cuda()
 
@@ -238,7 +241,8 @@ def set_manual_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-
+    elif is_torch_xpu_available():
+        torch.xpu.manual_seed_all(seed)
     return seed
 
 
@@ -273,7 +277,7 @@ def apply_stopping_strings(reply, all_stop_strings):
 
 def generate_reply_HF(question, original_question, seed, state, stopping_strings=None, is_chat=False):
     generate_params = {}
-    for k in ['max_new_tokens', 'do_sample', 'temperature', 'top_p', 'typical_p', 'repetition_penalty', 'repetition_penalty_range', 'encoder_repetition_penalty', 'top_k', 'min_length', 'no_repeat_ngram_size', 'num_beams', 'penalty_alpha', 'length_penalty', 'early_stopping', 'tfs', 'top_a', 'mirostat_mode', 'mirostat_tau', 'mirostat_eta', 'guidance_scale']:
+    for k in ['max_new_tokens', 'do_sample', 'temperature', 'temperature_last', 'top_p', 'min_p', 'typical_p', 'repetition_penalty', 'presence_penalty', 'frequency_penalty', 'repetition_penalty_range', 'encoder_repetition_penalty', 'top_k', 'min_length', 'no_repeat_ngram_size', 'num_beams', 'penalty_alpha', 'length_penalty', 'early_stopping', 'tfs', 'top_a', 'mirostat_mode', 'mirostat_tau', 'mirostat_eta', 'guidance_scale']:
         generate_params[k] = state[k]
 
     if state['negative_prompt'] != '':

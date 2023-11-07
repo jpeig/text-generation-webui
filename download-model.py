@@ -128,6 +128,11 @@ class ModelDownloader:
                 if classifications[i] in ['pytorch', 'pt']:
                     links.pop(i)
 
+        if has_gguf and specific_file is None:
+            for i in range(len(classifications) - 1, -1, -1):
+                if 'q4_k_m' not in links[i].lower():
+                    links.pop(i)
+
         is_llamacpp = has_gguf and specific_file is not None
         return links, sha256, is_lora, is_llamacpp
 
@@ -167,8 +172,22 @@ class ModelDownloader:
             r.raise_for_status()  # Do not continue the download if the request was unsuccessful
             total_size = int(r.headers.get('content-length', 0))
             block_size = 1024 * 1024  # 1MB
+
+            tqdm_kwargs = {
+                'total': total_size,
+                'unit': 'iB',
+                'unit_scale': True,
+                'bar_format': '{l_bar}{bar}| {n_fmt:6}/{total_fmt:6} {rate_fmt:6}'
+            }
+
+            if 'COLAB_GPU' in os.environ:
+                tqdm_kwargs.update({
+                    'position': 0,
+                    'leave': True
+                })
+
             with open(output_path, mode) as f:
-                with tqdm.tqdm(total=total_size, unit='iB', unit_scale=True, bar_format='{l_bar}{bar}| {n_fmt:6}/{total_fmt:6} {rate_fmt:6}') as t:
+                with tqdm.tqdm(**tqdm_kwargs) as t:
                     count = 0
                     for data in r.iter_content(block_size):
                         t.update(len(data))
@@ -217,8 +236,7 @@ class ModelDownloader:
                 continue
 
             with open(output_folder / sha256[i][0], "rb") as f:
-                bytes = f.read()
-                file_hash = hashlib.sha256(bytes).hexdigest()
+                file_hash = hashlib.file_digest(f, "sha256").hexdigest()
                 if file_hash != sha256[i][1]:
                     print(f'Checksum failed: {sha256[i][0]}  {sha256[i][1]}')
                     validated = False
